@@ -2,18 +2,16 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Security;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.SharePoint.Client;
 using System.Data;
-using Microsoft.Office.Interop.Excel;
-using OfficeOpenXml.Core.ExcelPackage;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Worksheet = DocumentFormat.OpenXml.Spreadsheet.Worksheet;
 using Sheets = DocumentFormat.OpenXml.Spreadsheet.Sheets;
+using Microsoft.Office.Interop.Excel;
+using Workbook = Microsoft.Office.Interop.Excel.Workbook;
+using System.Runtime.InteropServices;
 
 namespace SharePointCSOMAssessment
 {
@@ -43,7 +41,7 @@ namespace SharePointCSOMAssessment
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("Exception caught : "+e.Message);
+                    Console.WriteLine("Exception caught : " + e.Message);
                 }
             }
             Console.ReadKey();
@@ -72,22 +70,44 @@ namespace SharePointCSOMAssessment
 
             /***MyMyMy*****/
             Microsoft.SharePoint.Client.File createfileinvs = empcoll[0].File;
-            if(createfileinvs != null)
+            if (createfileinvs != null)
             {
-                FileInformation fileInfor = Microsoft.SharePoint.Client.File.OpenBinaryDirect(clientContext, createfileinvs.ServerRelativeUrl);
-
-                var fileName = Path.Combine(@"D:\DharanendraAssessment13-oct-2018\SharePointCSOMAssessment\SharePointCSOMAssessment", (string)empcoll[0].File.Name);
-                using (var fileStream = System.IO.File.Create(fileName))
+                try
                 {
-                    fileInfo.Stream.CopyTo(fileStream);
+                    FileInformation fileInfor = Microsoft.SharePoint.Client.File.OpenBinaryDirect(clientContext, createfileinvs.ServerRelativeUrl);
+
+                    var fileName = Path.Combine(@"D:\DharanendraAssessment13-oct-2018\", (string)empcoll[0].File.Name);
+
+
+                    if (System.IO.File.Exists(fileName))
+                    {
+                        System.IO.File.Delete(fileName);
+                    }
+
+                    using (var fileStream = System.IO.File.Create(fileName))
+                    {
+                        fileInfo.Stream.CopyTo(fileStream);
+                        fileInfo.Stream.Close();
+                    }
+                    //  System.IO.FileOptions.Asynchronous(filepath);
+                    //xlBook.Save();
+                    //xlBook.Close(true);
+                    //xlApp.Quit();
+                    //System.Runtime.InteropServices.Marshal.ReleaseComObject(xlApp);
+                    
                 }
+                catch (Exception exc)
+                {
+                    Console.WriteLine("Exception exc : " + exc.Message);
+                }
+
             }
             /***MyMyMy*****/
 
             /***************************************************************************************/
             bool isError = true;
             string strErrorMsg = string.Empty;
-            const string lstDocName = "Documents";
+            //const string lstDocName = "Documents";
             try
             {
                 dataTable = new System.Data.DataTable("EmployeeExcelDataTable");
@@ -140,7 +160,7 @@ namespace SharePointCSOMAssessment
             }
             catch (Exception e)
             {
-                throw;
+                Console.WriteLine("Exception exx " + e);
             }
             finally
             {
@@ -199,7 +219,7 @@ namespace SharePointCSOMAssessment
             }
             return value;
         }
-        
+
         //Password Secure String
         private static SecureString GetPassword()
         {
@@ -221,9 +241,31 @@ namespace SharePointCSOMAssessment
 
         public static void UploadFilesAndData(ClientContext clientContext, System.Data.DataTable dataTable)
         {
+
+            Application app1 = new Application();
+         //   System.IO.File.SetAttributes(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx", System.IO.File.GetAttributes(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx") & ~FileAttributes.ReadOnly);
+            if (System.IO.File.Exists(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx"))
+            {
+                Console.WriteLine("Exists file");
+                //System.IO.File.Delete(fileName);
+            }
+            //Workbook work1 = app1.Workbooks.Open(@"D:\FileUploadData.xlsx");
+            Workbook work1 = (Microsoft.Office.Interop.Excel.Workbook)(app1.Workbooks._Open(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx", System.Reflection.Missing.Value,
+           System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+           System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+           System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+           System.Reflection.Missing.Value, System.Reflection.Missing.Value));
+
+            int numberOfWorkbooks = app1.Workbooks.Count;
+            Microsoft.Office.Interop.Excel.Worksheet sheet1 = (Microsoft.Office.Interop.Excel.Worksheet)work1.Worksheets[1];
+
+            int numberOfSheets = work1.Worksheets.Count;
+            //Worksheet ws = work1.shee
+            //Microsoft.Office.Interop.Excel.Worksheet sheet1 = (Microsoft.Office.Interop.Excel.Worksheet)work1.Worksheets;
             try
             {
-                if(dataTable.Rows.Count > 0)
+
+                if (dataTable.Rows.Count > 0)
                 {
                     //string filepath = dataTable.Rows[0]["FilePath"].ToString();
                     //string status = dataTable.Rows[0]["Status"].ToString();
@@ -231,62 +273,107 @@ namespace SharePointCSOMAssessment
                     //string department = dataTable.Rows[0]["Dept"].ToString();
                     //string uploadStatus = dataTable.Rows[0]["Upload Status"].ToString();
                     //string reason = dataTable.Rows[0]["Reason"].ToString();
-                    Console.WriteLine("-------------------Uploading file-----------------");
+                    Console.WriteLine("-------------------Uploading file--------------------");
 
                     List l = clientContext.Web.Lists.GetByTitle("FileUpload");
                     clientContext.Load(l);
                     clientContext.ExecuteQuery();
 
-                    Console.WriteLine("List name "+l.Title+" desc :"+ l.Description);
+                    Console.WriteLine("List name " + l.Title + " desc :" + l.Description);
 
                     for (int count = 0; count < dataTable.Rows.Count; count++)
                     {
-                        if (count != 0)
+                        try
                         {
-                            string filepath = dataTable.Rows[count]["FilePath"].ToString();
-                            string status = dataTable.Rows[count]["Status"].ToString();
-                            string createdBy = dataTable.Rows[count]["Created By"].ToString();
-                            string department = dataTable.Rows[count]["Dept"].ToString();
-                            string uploadStatus = dataTable.Rows[count]["Upload Status"].ToString();
-                            string reason = dataTable.Rows[count]["Reason"].ToString();
-                            long sizeoffile = new System.IO.FileInfo(filepath.Replace(@"\\",@"\")).Length;
-
-                            //var fs = new FileStream("@" + filepath, FileMode.Open);
-                            if(sizeoffile > 100 && sizeoffile < 2097150)
+                            if (count != 0)
                             {
-                                ListItemCreationInformation newListItemInfo = new ListItemCreationInformation();
+                                string filepath = dataTable.Rows[count]["FilePath"].ToString();
+                                string status = dataTable.Rows[count]["Status"].ToString();
+                                string createdBy = dataTable.Rows[count]["Created By"].ToString();
+                                string department = dataTable.Rows[count]["Dept"].ToString();
+                                string uploadStatus = dataTable.Rows[count]["Upload Status"].ToString();
+                                string reason = dataTable.Rows[count]["Reason"].ToString();
+                                long sizeoffile = new System.IO.FileInfo(filepath.Replace(@"\\", @"\")).Length;
 
-                                FileCreationInformation file = new FileCreationInformation();
-                                file.Content = System.IO.File.ReadAllBytes(filepath.Replace(@"\\", @"\"));
-                                file.Overwrite = true;
-                                file.Url = Path.Combine("FileUpload/", Path.GetFileName(filepath.Replace(@"\\", @"\")));
-                                Microsoft.SharePoint.Client.File uploadfile = l.RootFolder.Files.Add(file);
-                                
-                                clientContext.Load(uploadfile);
-                                clientContext.ExecuteQuery();
+                                //var fs = new FileStream("@" + filepath, FileMode.Open);
+                                if (sizeoffile > 100 && sizeoffile < 2097150)
+                                {
+                                    //ListItemCreationInformation newListItemInfo = new ListItemCreationInformation();
 
-                                ListItem li = uploadfile.ListItemAllFields;
-                                li["CreatedBy"] = createdBy;
-                                li["SizeOfFile"] = sizeoffile;
-                                li["FileType"] = Path.GetExtension(filepath.Replace(@"\\", @"\"));
-                                li["Status"] = status;
-                                li["Dept"] = "2";
+                                    FileCreationInformation file = new FileCreationInformation();
+                                    file.Content = System.IO.File.ReadAllBytes(filepath.Replace(@"\\", @"\"));
+                                    file.Overwrite = true;
+                                    file.Url = Path.Combine("FileUpload/", Path.GetFileName(filepath.Replace(@"\\", @"\")));
+                                    Microsoft.SharePoint.Client.File uploadfile = l.RootFolder.Files.Add(file);
 
-                                li.Update();
-                                clientContext.ExecuteQuery();
+                                    clientContext.Load(uploadfile);
+                                    clientContext.ExecuteQuery();
+
+                                    ListItem li = uploadfile.ListItemAllFields;
+                                    li["CreatedBy"] = createdBy;
+                                    li["SizeOfFile"] = sizeoffile;
+                                    li["FileType"] = Path.GetExtension(filepath.Replace(@"\\", @"\"));
+                                    li["Status"] = status;
+                                    li["Dept"] = "2";
+
+                                    li.Update();
+                                    clientContext.ExecuteQuery();
+                                    sheet1.Cells[count + 2, 5] = "Success";
+                                    sheet1.Cells[count + 2, 6] = "N/A";
+                                }
+                                else
+                                {
+                                    Console.WriteLine("File : " + Path.GetFileName(filepath.Replace(@"\\", @"\")) + " could not be uploaded since file size is not in range");
+                                    sheet1.Cells[count + 2, 5] = "Error";
+                                    sheet1.Cells[count + 2, 6] = "File Size Exceeds Specified Range";
+                                }
                             }
-                            else
-                            {
-                                Console.WriteLine("File : "+filepath+" could not be uploaded since file size is not in range");
-                            }
+                          
+                        }
+                        catch (Exception ex)
+                        {
+                           
                         }
                     }
                 }
             }
             catch (Exception ee)
             {
-                Console.WriteLine("Exception :"+ee.Message);
+                Console.WriteLine("Exception :" + ee.Message);
             }
+
+            //var attr = System.IO.File.GetAttributes(@"D:\FileUploadData.xlsx");
+
+            //// set read-only
+            //attr = attr | FileAttributes.ReadOnly;
+            //System.IO.File.SetAttributes(@"D:\FileUploadData.xlsx", attr);
+
+            //// unset read-only
+            //attr = attr & ~FileAttributes.ReadOnly;
+            //System.IO.File.SetAttributes(@"D:\FileUploadData.xlsx", attr);
+
+          
+            if (System.IO.File.Exists(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx"))
+            {
+                System.IO.File.Delete(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx");
+            }
+
+            work1.SaveAs(@"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx", System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+                                       System.Reflection.Missing.Value, System.Reflection.Missing.Value, Microsoft.Office.Interop.Excel.XlSaveAsAccessMode.xlNoChange,
+                                       System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+                                       System.Reflection.Missing.Value, System.Reflection.Missing.Value);
+
+
+            //            work1.SaveAs(@"D:\DharanendraAssessment13-oct-2018\Assessment_Requirements_Specification_Dharanendra.doc", Microsoft.Office.Interop.Excel.XlFileFormat.xlOpenXMLWorkbook, misValue, misValue, misValue, misValue,
+            //     Microsoft.Office.Interop.Excel.XlSaveAsAccessMode.xlExclusive, misValue, misValue, misValue, misValue, misValue);
+
+            work1.Close(true, @"D:\DharanendraAssessment13-oct-2018\FileUploadData.xlsx", System.Reflection.Missing.Value);
+            app1.Quit();
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(app1);
+
+            //Marshal.ReleaseComObject(sheet1);
+            //Marshal.ReleaseComObject(work1);
+            //Marshal.ReleaseComObject(app1);
         }
 
     }
