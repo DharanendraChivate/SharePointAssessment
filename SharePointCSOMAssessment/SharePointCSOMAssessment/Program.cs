@@ -2,18 +2,17 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Security;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.SharePoint.Client;
 using System.Data;
-using Microsoft.Office.Interop.Excel;
-using OfficeOpenXml.Core.ExcelPackage;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using Worksheet = DocumentFormat.OpenXml.Spreadsheet.Worksheet;
 using Sheets = DocumentFormat.OpenXml.Spreadsheet.Sheets;
+using Microsoft.Office.Interop.Excel;
+using Workbook = Microsoft.Office.Interop.Excel.Workbook;
+using System.Runtime.InteropServices;
+using Field = Microsoft.SharePoint.Client.Field;
 
 namespace SharePointCSOMAssessment
 {
@@ -33,23 +32,24 @@ namespace SharePointCSOMAssessment
             {
                 clientContext.Credentials = new SharePointOnlineCredentials(userName, password);
 
-                //Microsoft.SharePoint.Client.File excelFile = clientContext.Web.Lists.GetByTitle("UserDocuments").GetItems();
-
                 try
                 {
                     printExcelFileDetails(clientContext);
 
                     UploadFilesAndData(clientContext, dataTable);
+
+                    UploadFileToSP(clientContext);
+
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine("Exception caught : "+e.Message);
+                    Console.WriteLine("Exception caught : " + e.Message);
                 }
             }
             Console.ReadKey();
         }
 
-        //Print Excel file Details
+        //Get Excel file Details
         public static void printExcelFileDetails(ClientContext clientContext)
         {
             List emplist = clientContext.Web.Lists.GetByTitle("UserDocuments");
@@ -66,36 +66,45 @@ namespace SharePointCSOMAssessment
             var filepath = empcoll[0].File.ServerRelativeUrl;
             var fileInfo = Microsoft.SharePoint.Client.File.OpenBinaryDirect(clientContext, filepath);
 
-            Console.WriteLine("file path :" + filepath);
-            Console.WriteLine("file info :" + fileInfo);
-            Console.WriteLine("file name :" + excelFile.Name);
+            //Console.WriteLine("file path :" + filepath);
+            //Console.WriteLine("file info :" + fileInfo);
+            //Console.WriteLine("file name :" + excelFile.Name);
 
             /***MyMyMy*****/
             Microsoft.SharePoint.Client.File createfileinvs = empcoll[0].File;
-            if(createfileinvs != null)
+            if (createfileinvs != null)
             {
-                FileInformation fileInfor = Microsoft.SharePoint.Client.File.OpenBinaryDirect(clientContext, createfileinvs.ServerRelativeUrl);
-
-                var fileName = Path.Combine(@"D:\DharanendraAssessment13-oct-2018\SharePointCSOMAssessment\SharePointCSOMAssessment", (string)empcoll[0].File.Name);
-                using (var fileStream = System.IO.File.Create(fileName))
+                try
                 {
-                    fileInfo.Stream.CopyTo(fileStream);
-                }
-            }
-            /***MyMyMy*****/
+                    FileInformation fileInfor = Microsoft.SharePoint.Client.File.OpenBinaryDirect(clientContext, createfileinvs.ServerRelativeUrl);
 
-            /***************************************************************************************/
+                    var fileName = Path.Combine(@"D:\", (string)empcoll[0].File.Name);
+
+                    if (System.IO.File.Exists(fileName))
+                    {
+                        System.IO.File.Delete(fileName);
+                    }
+
+                    using (var fileStream = System.IO.File.Create(fileName))
+                    {
+                        fileInfo.Stream.CopyTo(fileStream);
+                        fileInfo.Stream.Close();
+                        fileStream.Dispose();
+                    }
+                }
+                catch (Exception exc)
+                {
+                    Console.WriteLine("Exception exc : " + exc.Message);
+                }
+
+            }
+
             bool isError = true;
             string strErrorMsg = string.Empty;
-            const string lstDocName = "Documents";
             try
             {
                 dataTable = new System.Data.DataTable("EmployeeExcelDataTable");
-                //List list = clientContext.Web.Lists.GetByTitle(lstDocName);
-                //clientContext.Load(list.RootFolder);
-                //clientContext.ExecuteQuery();
-                //string fileServerRelativeUrl = list.RootFolder.ServerRelativeUrl + "/" + fileName;
-                //Microsoft.SharePoint.Client.File file = clientContext.Web.GetFileByServerRelativeUrl(fileServerRelativeUrl);
+
                 ClientResult<System.IO.Stream> data = excelFile.OpenBinaryStream();
                 clientContext.Load(excelFile);
                 clientContext.ExecuteQuery();
@@ -135,12 +144,11 @@ namespace SharePointCSOMAssessment
                         }
                     }
                 }
-                //   UpdateSPList(clientContext, dataTable, fileName);
                 isError = false;
             }
             catch (Exception e)
             {
-                throw;
+                Console.WriteLine("Exception exx " + e);
             }
             finally
             {
@@ -149,8 +157,6 @@ namespace SharePointCSOMAssessment
                     //Logging
                 }
             }
-            /***************************************************************************************/
-
         }
 
         private static string GetCellValue(ClientContext clientContext, SpreadsheetDocument document, Cell cell)
@@ -199,7 +205,154 @@ namespace SharePointCSOMAssessment
             }
             return value;
         }
-        
+
+        /***********************Uploading Data and Files in Specific List Library*******************/
+        public static void UploadFilesAndData(ClientContext clientContext, System.Data.DataTable dataTable)
+        {
+            Application app1 = new Application();
+            if (System.IO.File.Exists(@"D:\FileUploadData.xlsx"))
+            {
+                Console.WriteLine("Exists file");
+            }
+
+            Workbook work1 = (Microsoft.Office.Interop.Excel.Workbook)(app1.Workbooks._Open(@"D:\FileUploadData.xlsx", System.Reflection.Missing.Value,
+            System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+            System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+            System.Reflection.Missing.Value, System.Reflection.Missing.Value, System.Reflection.Missing.Value,
+            System.Reflection.Missing.Value, System.Reflection.Missing.Value));
+
+            int numberOfWorkbooks = app1.Workbooks.Count;
+            Microsoft.Office.Interop.Excel.Worksheet sheet1 = (Microsoft.Office.Interop.Excel.Worksheet)work1.Worksheets[1];
+            int numberOfSheets = work1.Worksheets.Count;
+
+            try
+            {
+
+                if (dataTable.Rows.Count > 0)
+                {
+                    Console.WriteLine("-------------------Uploading file--------------------");
+
+                    List l = clientContext.Web.Lists.GetByTitle("FileUpload");
+                    clientContext.Load(l);
+                    clientContext.ExecuteQuery();
+
+                    Console.WriteLine("List name " + l.Title + " desc :" + l.Description);
+
+                    for (int count = 0; count < dataTable.Rows.Count; count++)
+                    {
+                        try
+                        {
+                            if (count > -1)
+                            {
+                                string filepath = dataTable.Rows[count]["FilePath"].ToString();
+                                string status = dataTable.Rows[count]["Status"].ToString();
+                                string createdBy = dataTable.Rows[count]["Created By"].ToString();
+                                string department = dataTable.Rows[count]["Dept"].ToString();
+                                string uploadStatus = dataTable.Rows[count]["Upload Status"].ToString();
+                                string reason = dataTable.Rows[count]["Reason"].ToString();
+                                long sizeoffile = new System.IO.FileInfo(filepath.Replace(@"\\", @"\")).Length;
+                                var fs = new FileStream("@" + filepath, FileMode.Open);
+
+                                if (sizeoffile > 100 && sizeoffile < 2097150)
+                                {
+                                    FileCreationInformation file = new FileCreationInformation();
+                                    file.Content = System.IO.File.ReadAllBytes(filepath.Replace(@"\\", @"\"));
+                                    file.Overwrite = true;
+                                    file.Url = Path.Combine("FileUpload/", Path.GetFileName(filepath.Replace(@"\\", @"\")));
+                                    Microsoft.SharePoint.Client.File uploadfile = l.RootFolder.Files.Add(file);
+
+                                    clientContext.Load(uploadfile);
+                                    clientContext.ExecuteQuery();
+
+                                    ListItem li = uploadfile.ListItemAllFields;
+
+                                    Field choice = l.Fields.GetByInternalNameOrTitle("Status");
+
+                                    FieldChoice fldChoice = clientContext.CastTo<FieldChoice>(choice);
+
+                                    string[] statusArray = status.Split(',');
+                                    string statusPut = string.Empty;
+                                    for (int statusCount = 0; statusCount < statusArray.Length; statusCount++)
+                                    {
+                                        if (fldChoice.Choices.Contains(statusArray[statusCount]))
+                                        {
+                                            if (statusCount == statusArray.Length - 1)
+                                            {
+                                                statusPut += statusArray[statusCount];
+                                            }
+                                            else
+                                            {
+                                                statusPut += statusArray[statusCount] + ";";
+                                            }
+                                        }
+                                    }
+
+                                    li["CreatedBy"] = createdBy;
+                                    li["SizeOfFile"] = sizeoffile;
+                                    li["FileType"] = Path.GetExtension(filepath.Replace(@"\\", @"\"));
+                                    li["Status"] = statusPut;
+                                    li["Dept"] = "2";
+
+                                    li.Update();
+                                    clientContext.ExecuteQuery();
+                                    sheet1.Cells[count + 2, 5] = "Success";
+                                    sheet1.Cells[count + 2, 6] = "N/A";
+                                }
+                                else
+                                {
+                                    Console.WriteLine("File : " + Path.GetFileName(filepath.Replace(@"\\", @"\")) + " could not be uploaded since file size is not in range");
+                                    sheet1.Cells[count + 2, 5] = "Error";
+                                    sheet1.Cells[count + 2, 6] = "File Size Exceeds Specified Range";
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Exception : "+ex);
+                        }
+                    }
+                }
+            }
+            catch (Exception ee)
+            {
+                Console.WriteLine("Exception :" + ee.Message);
+            }
+
+            work1.Save();
+
+            work1.Close(true, @"D:\FileUploadData.xlsx", System.Reflection.Missing.Value);
+            app1.Quit();
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(app1);
+
+            Marshal.ReleaseComObject(sheet1);
+            Marshal.ReleaseComObject(work1);
+            Marshal.ReleaseComObject(app1);
+        }
+
+        /******************Upload Status File******************/
+        public static void UploadFileToSP(ClientContext clientContext)
+        {
+            try
+            {
+                Console.WriteLine("---------------Uploading file to Share Point--------------");
+                var newfile = @"D:\FileUploadData.xlsx";
+
+                FileCreationInformation file = new FileCreationInformation();
+                file.Content = System.IO.File.ReadAllBytes(newfile);
+                file.Overwrite = true;
+                file.Url = Path.Combine("UserDocuments/", Path.GetFileName(newfile));
+
+                List l = clientContext.Web.Lists.GetByTitle("DemoLibrary");
+                var f = l.RootFolder.Files.Add(file);
+
+                clientContext.ExecuteQuery();
+            }
+            catch (Exception)
+            {
+                throw;
+            }
+        }
+
         //Password Secure String
         private static SecureString GetPassword()
         {
@@ -217,77 +370,5 @@ namespace SharePointCSOMAssessment
             while (info.Key != ConsoleKey.Enter);
             return securePassword;
         }
-
-
-        public static void UploadFilesAndData(ClientContext clientContext, System.Data.DataTable dataTable)
-        {
-            try
-            {
-                if(dataTable.Rows.Count > 0)
-                {
-                    //string filepath = dataTable.Rows[0]["FilePath"].ToString();
-                    //string status = dataTable.Rows[0]["Status"].ToString();
-                    //string createdBy = dataTable.Rows[0]["Created By"].ToString();
-                    //string department = dataTable.Rows[0]["Dept"].ToString();
-                    //string uploadStatus = dataTable.Rows[0]["Upload Status"].ToString();
-                    //string reason = dataTable.Rows[0]["Reason"].ToString();
-                    Console.WriteLine("-------------------Uploading file-----------------");
-
-                    List l = clientContext.Web.Lists.GetByTitle("FileUpload");
-                    clientContext.Load(l);
-                    clientContext.ExecuteQuery();
-
-                    Console.WriteLine("List name "+l.Title+" desc :"+ l.Description);
-
-                    for (int count = 0; count < dataTable.Rows.Count; count++)
-                    {
-                        if (count != 0)
-                        {
-                            string filepath = dataTable.Rows[count]["FilePath"].ToString();
-                            string status = dataTable.Rows[count]["Status"].ToString();
-                            string createdBy = dataTable.Rows[count]["Created By"].ToString();
-                            string department = dataTable.Rows[count]["Dept"].ToString();
-                            string uploadStatus = dataTable.Rows[count]["Upload Status"].ToString();
-                            string reason = dataTable.Rows[count]["Reason"].ToString();
-                            long sizeoffile = new System.IO.FileInfo(filepath.Replace(@"\\",@"\")).Length;
-
-                            //var fs = new FileStream("@" + filepath, FileMode.Open);
-                            if(sizeoffile > 100 && sizeoffile < 2097150)
-                            {
-                                ListItemCreationInformation newListItemInfo = new ListItemCreationInformation();
-
-                                FileCreationInformation file = new FileCreationInformation();
-                                file.Content = System.IO.File.ReadAllBytes(filepath.Replace(@"\\", @"\"));
-                                file.Overwrite = true;
-                                file.Url = Path.Combine("FileUpload/", Path.GetFileName(filepath.Replace(@"\\", @"\")));
-                                Microsoft.SharePoint.Client.File uploadfile = l.RootFolder.Files.Add(file);
-                                
-                                clientContext.Load(uploadfile);
-                                clientContext.ExecuteQuery();
-
-                                ListItem li = uploadfile.ListItemAllFields;
-                                li["CreatedBy"] = createdBy;
-                                li["SizeOfFile"] = sizeoffile;
-                                li["FileType"] = Path.GetExtension(filepath.Replace(@"\\", @"\"));
-                                li["Status"] = status;
-                                li["Dept"] = "2";
-
-                                li.Update();
-                                clientContext.ExecuteQuery();
-                            }
-                            else
-                            {
-                                Console.WriteLine("File : "+filepath+" could not be uploaded since file size is not in range");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ee)
-            {
-                Console.WriteLine("Exception :"+ee.Message);
-            }
-        }
-
     }
 }
